@@ -71,8 +71,53 @@ mp1_poke:
 
 .globl mp1_rtc_tasklet
 mp1_rtc_tasklet:
-		ret
+		#first save callee saved registers
+		pushl	%EBX
+		pushl	%ESI
+		pushl	%EDI
+		#use %ecx to point to each missile
+		leal	mp1_missile_list, %ECX
+		cmpl	$0, %ECX
+		jne	update_list	
 
+		#retrieve data for callee saved register
+		popl	%EDI
+		popl	%ESI
+		popl	%EBX
+		ret
+update_list:
+		#first check if it is exploded
+		cmpl	$0, 28(,%ECX)
+		jne	no_xy_update
+		#remove it from the screen
+		#position will be (80*y+x)*2
+		movl	8,(%ECX), %EAX
+		imull	%EAX, $80
+		addl	4,(%ECX), %EAX
+		imull	%EAX, $2
+		movw	
+		#update x and y of this missile
+		addl	12(,%ECX), 4(,%ECX)
+		addl	16(,%ECX), 8(,%ECX)
+no_xy_update:
+		#first check if it is out of screen
+		cmpl	$79, 4(,%ECX)
+		jg	erase_missile
+		cmpl	$0, 4(,%ECX)
+		jl	erase_missile
+		cmpl	$24, 8(,%ECX)
+		jg	erase_missile
+		cmpl	$0, 8(,%ECX)
+		jl	erase_missile
+		jmp	second_case
+erase_missile:
+		
+secdon_case:	
+		ret
+redraw_list:
+		ret
+redraw_crosshairs:
+		ret
 # int mp1_ioctl(unsigned long arg, unsigned int cmd)
 # The dispatch function for the MP1 ioctls - should use the cmd argument
 # and a jumptable to execute one of the specific ioctls implemented below.
