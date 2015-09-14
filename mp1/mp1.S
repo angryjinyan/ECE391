@@ -1,4 +1,5 @@
 
+
 # mp1.S - missile-command version
 # Good luck, and have fun!
 
@@ -28,17 +29,24 @@
 .globl mp1_missile_list, base_alive, mp1_score
 
 mp1_missile_list:	.long 0x0	# Head of list pointer
-base_alive:		.long 0x0	# Array of 3 bytes, plus a padding byte
+base_alive:		.long 0x01010101	# Array of 3 bytes, plus a padding byte
 mp1_score:		.long 0x0	# Player's current score
 
 
 # Data private to this  file
 
 base_pic:     	    .string "/^^^\\"	# Picture of a live base
-dead_base_pic: 	    .string "xxxxx"	# Picture of a dead base
-crosshairs_x:		.long 0x0	# X-position of the crosshairs
-crosshairs_y:		.long 0x0	# Y-position of the crosshairs
-ioctl_status:		.long 0x0	# for mp1_ioctl_getstatus
+dead_base_pic: 	    .string "xxxxx"		# Picture of a dead base
+crosshairs_x:		.long 0x0			# X-position of the crosshairs
+crosshairs_y:		.long 0x0			# Y-position of the crosshairs
+
+
+cur_status:		.long 0x0				# Current game status
+m_prev:			.long 0x0				# previous missile pointer
+m_cur:			.long 0x0				# current missile pointer
+m_next:			.long 0x0				# next missile pointer
+nuflag:			.long 0x0				# notify user flag
+vba:			.long 0x0	
 
 .text
 
@@ -52,12 +60,10 @@ ioctl_status:		.long 0x0	# for mp1_ioctl_getstatus
 #   Outputs: Text-mode video screen is written to at location %eax with
 #            the byte in %cl
 # Registers: Clobbers EDX
-#make %edx a callee saved function
+
 mp1_poke:
-		pushl	%edx
 		movl    vmem_base_addr(,1),%edx
 		movb    %cl,(%edx,%eax,1)
-		popl	%edx
 		ret
 
 #   ----------------- Exported functions ---------------------
@@ -74,110 +80,137 @@ mp1_poke:
 
 .globl mp1_rtc_tasklet
 mp1_rtc_tasklet:
-		#first save old base pointer and get new one
-		pushl	%ebp
-		movl	%esp, %ebp
-		
-		#save callee saved registers
+		pushl 	%ebp						#set up frame, save registers
+		movl	%esp,%ebp
 		pushl	%ebx
 		pushl	%esi
 		pushl	%edi
-		movl	$0, %esi
-		#use %ecx to point to each missile
-		movl	mp1_missile_list, %ecx
-		#update_list completes the first task
+		
+		
+	##set up pointers and call update_missiles		
+		movl	$0, m_prev					#initialize m_prev, m_cur, m_next
+		movl	$0, m_next	
+		movl	mp1_missile_list, %edx
+		movl	%edx, m_cur				
+		cmpl	$0, %edx					#check if current missile pointer is null
+		jz		check_base_1				#no missile to update
+		movl	(%edx), %ecx				#has missile, update m_next
+		movl	%ecx, m_next
+		
 		pushl	%eax
 		pushl	%ecx
 		pushl	%edx
 		call	update_missiles
-		movl	%eax, %esi
-		call	redraw_cities
-		call	redraw_crosshairs
 		popl	%edx
 		popl	%ecx
 		popl	%eax
-		cmpl	$0, %esi
-		je		tasklet_end
-		#otherwise call mp1_notify_user
+		
+		
+	##checking if the three bases are alive and draw according to corresponding status 	
+	check_base_1:
+		movl	$0x000000FF, %eax
+		andl	base_alive, %eax
+		jz	base1_dead
+		
 		pushl	%eax
 		pushl	%ecx
 		pushl	%edx
-		pushl	$0x08049585
-		call	mp1_notify_user
-		popl	%edx
+		pushl	$18
+		call	draw_live_base
+		popl	%edx						#clean up stack
 		popl	%edx
 		popl	%ecx
 		popl	%eax
-tasklet_end:
-		#retrieve data for callee saved register
+		
+		jmp	check_base_2
+		
+	base1_dead:
+		pushl	%eax
+		pushl	%ecx
+		pushl	%edx
+		pushl	$18
+		call	draw_dead_base
+		popl	%edx						#clean up stack
+		popl	%edx
+		popl	%ecx
+		popl	%eax
+
+	check_base_2:
+		movl	$0x0000FF00, %eax
+		andl	base_alive, %eax
+		jz	base2_dead
+		
+		pushl	%eax
+		pushl	%ecx
+		pushl	%edx
+		pushl	$38
+		call	draw_live_base
+		popl	%edx						#clean up stack
+		popl	%edx
+		popl	%ecx
+		popl	%eax
+		
+		jmp	check_base_3
+		
+	base2_dead:
+		pushl	%eax
+		pushl	%ecx
+		pushl	%edx
+		pushl	$38
+		call	draw_dead_base
+		popl	%edx						#clean up stack
+		popl	%edx
+		popl	%ecx
+		popl	%eax
+
+	check_base_3:
+		movl	$0x00FF0000, %eax
+		andl	base_alive, %eax
+		jz	base3_dead
+		
+		pushl	%eax
+		pushl	%ecx
+		pushl	%edx
+		pushl	$58
+		call	draw_live_base
+		popl	%edx						#clean up stack
+		popl	%edx
+		popl	%ecx
+		popl	%eax
+		
+		jmp	check_base_over
+		
+	base3_dead:
+		pushl	%eax
+		pushl	%ecx
+		pushl	%edx
+		pushl	$58
+		call	draw_dead_base	
+		popl	%edx						#clean up stack
+		popl	%edx
+		popl	%ecx
+		popl	%eax
+	
+	check_base_over:
+		pushl	%eax
+		pushl	%ecx
+		pushl	%edx
+		pushl	crosshairs_x					
+		pushl	crosshairs_y
+		pushl	$0x2B
+		call	draw_char		
+		popl	%edx						#clean up stack	
+		popl	%edx						#clean up stack
+		popl	%edx						#clean up stack
+		popl	%edx
+		popl	%ecx
+		popl	%eax	
+		
 		popl	%edi
 		popl	%esi
 		popl	%ebx
-		leave
+		leave 
 		ret
-
-#second big subfunction
-#this function redraws the three bases, handling both they are alive or dead
-# Inputs   : none
-# Outputs  : none
-# Registers: Standard C calling convention
-redraw_cities:
-		#use %ecx to hold the left corner of the city to be drawn
-		#draw the leftmost one
-		movl	$18, %ecx
-		#use %edx to status of each base
-		movl	base_alive, %edx
-		#get the last byte
-		andl	$0x000000ff, %edx
-		cmpl	$0, %edx
-		je		draw_first_destroyed_city
-		call	draw_city
-		jmp		draw_second_city
-draw_first_destroyed_city:
-		call	draw_destroyed_city
-draw_second_city:
-		movl	$38, %ecx
-		movl	base_alive, %edx
-		#get the third byte
-		andl	$0x0000ff00, %edx
-		cmpl	$0, %edx
-		je		draw_second_destroyed_city
-		call	draw_city
-		jmp		draw_third_city
-draw_second_destroyed_city:
-		call	draw_destroyed_city
-draw_third_city:
-		movl	$58, %ecx
-		movl	base_alive, %edx
-		#get the second byte
-		andl	$0x00ff0000, %edx
-		cmpl	$0, %edx
-		jne		draw_third_good_city
-		call	draw_destroyed_city
-		ret
-draw_third_good_city:
-		call	draw_city
-		ret
-
-#third big subfunction
-#this function redraws the crosshair
-# Inputs   : none
-# Outputs  : none
-# Registers: Standard C calling convention
-redraw_crosshairs:
-		#this function redraws the crosshair
-		#first calculate position (80*y+x)*2
-		movl	crosshairs_y, %eax
-		imull	$80, %eax
-		addl	crosshairs_x, %eax
-		addl	%eax, %eax
-		#use "+" as crosshairs, whose ascii is 43 in decimal
-		pushl	%ecx
-		movb	$43, %cl
-		call	mp1_poke
-		popl	%ecx
-		ret
-
 
 # int mp1_ioctl(unsigned long arg, unsigned int cmd)
 # The dispatch function for the MP1 ioctls - should use the cmd argument
@@ -190,548 +223,612 @@ redraw_crosshairs:
 
 .globl mp1_ioctl
 mp1_ioctl:
-		#get the value of cmd in %ecx
-		movl	8(%esp), %ecx
-		cmpl	$4, %ecx
-		jg		mp1_ioctl_wrongcmd
-		cmpl	$0, %ecx
-		jl		mp1_ioctl_wrongcmd
-		jmp		*core_functions(,%ecx,4)
-mp1_ioctl_wrongcmd:
-		movl	$-1, %ecx
+		movl	8(%esp),%ecx		
+		
+		addl	$-5, %ecx					#check if cmd in range
+		jns		false_cmd
+		addl	$5, %ecx
+		js		false_cmd
+		jmp		*ioctl_jumptable(,%ecx,4)
+
+	ioctl_jumptable:
+		.long	mp1_ioctl_startgame, mp1_ioctl_addmissile, mp1_ioctl_movexhairs, mp1_ioctl_getstatus, mp1_ioctl_endgame
+		
+	false_cmd:								#if cmd out of range return -1
+		movl	$-1, %eax
 		ret
-
-core_functions:
-	.long	mp1_ioctl_startgame, mp1_ioctl_addmissile, mp1_ioctl_movexhairs, mp1_ioctl_getstatus, mp1_ioctl_endgame
-
 
 
 # ----------------- Functions private to this file -------------------
+##update the status of all missiles, including explosion, location, erase
 update_missiles:
-#this function update the whole linked list
-# Inputs   : %ecx holds the pointer points to head of the list (and will points the each missile)
-# Outputs  : %eax holds whether we need to call the mp1_notify_user
-# Registers: Standard C calling convention
-#check if %ecx contains 0, which is NULL, means that it has reached the end
-		cmpl	$0, %ecx
-		jne		update_missiles_continue
-		movl	%esi, %eax
-		ret
-update_missiles_continue:
-		#first remove it from the screen
-		call	calculate_position
-		pushl	%ecx
-		movb	$32, %cl
-		call	mp1_poke
-		popl	%ecx
-		#check if it is exploded
-		cmpl	$0, EXPLODED(%ecx)
-		jne		no_xy_update		
-		#update x and y of this missile
-		movl	VX(%ecx), %edx
-		addl	%edx, X(%ecx)
-		movl	VY(%ecx), %edx
-		addl	%edx, Y(%ecx)
-no_xy_update:
-		#first check if it is out of screen
-		cmpl	$0x004fffff, X(%ecx)
-		jg		erase_missile
-		cmpl	$0, X(%ecx)
-		jl		erase_missile
-		cmpl	$0x0018ffff, Y(%ecx)
-		jg		erase_missile
-		cmpl	$0, Y(%ecx)
-		jl		erase_missile
-		jmp		second_case
-erase_missile:
-		call	mp1_missile_remove
-		jmp		this_missile_done
-second_case:	
-		#first check if it is exploding
-		cmpl	$0, EXPLODED(%ecx)
-		jne		is_exploding
-		movl	X(%ecx), %edx
-		shrl	$16, %edx
-		cmpl	%edx, DEST_X(%ecx)
-		jne		third_case
-		movl	Y(%ecx), %edx
-		shrl	$16, %edx
-		cmpl	%edx, DEST_Y(%ecx)
-		jne		third_case
-is_exploding:
-		#save caller saved registers
-		pushl	%eax
-		pushl	%edx		
-		#push the argument for missile_explode
-		pushl	%ecx
-		call	missile_explode
-		#check if this function returns non_zero value
-		cmpl	$0, %esi
-		jne		is_exploding_continue
-		movl	%eax, %esi
-is_exploding_continue:
-		popl	%ecx
-		popl	%edx
-		popl	%eax
-		#get the position of the missile in %eax
-		call	calculate_position
-		subl	$1, EXPLODED(%ecx)
-		jz		explode_stop
-		pushl	%ecx
-		movb	$EXPLOSION, %cl
-		jmp		draw_explosion
-explode_stop:
-		call	mp1_missile_remove
-		pushl	%ecx
-		movb	$32,%cl
-draw_explosion:	
-		call	mp1_poke
-		popl	%ecx
-		jmp		this_missile_done		 
-third_case:
-		#this case just redraw the missile in new position
-		call	calculate_position
-		pushl	%ecx
-		movb	C(%ecx), %cl
-		call	mp1_poke
-		popl	%ecx
-this_missile_done:
-		#move the %ecx points to the next missile
-		cmpl	$0, %ecx
-		jne		update_missiles_continue_second
-		movl	%esi, %eax
-		ret
-update_missiles_continue_second:
-		movl	NEXT(%ecx), %ecx
-		jmp		update_missiles   
-
-		
-		
-		
-#this function is called by mp1_ioctl and will intialize base_alive 
-#and corss hair at the beginning of the game
-# Inputs   : none
-# Outputs  : none
-# Registers: Standard C calling convention
-mp1_ioctl_startgame:
-		#c calling convetion
-		pushl	%ebp
-		movl	%esp, %ebp
+		pushl 	%ebp
+		movl 	%esp,%ebp
 		pushl	%ebx
 		pushl	%esi
 		pushl	%edi
-		#this function intialize only base_alive and corss_hair
-		movl	$0x00010101, base_alive
-		movl	$40, crosshairs_x
-		movl	$12, crosshairs_y
-		#prepare to leave
-		popl	%edi
-		popl	%esi
-		popl	%ebx
-		leave     
-		ret  
-
-
-#this function is called by mp1_ioctl and will copy a user space missile to kernel
-# Inputs   : one argument, points to the missile in user space
-# Outputs  : return 0 if copy succeeds and -1 if fails
-# Registers: Standard C calling convention
-mp1_ioctl_addmissile:
-		#c calling convetion
-		pushl	%ebp
-		movl	%esp, %ebp
-		pushl	%ebx
-		pushl	%esi
-		pushl	%edi
-		#first get the argument in %ecx
-		movl	8(%ebp), %ecx
-		#then allocate 33 bytes in kernel
-		movl	$33, %edx
-		pushl	%ecx
-		pushl	%edx
-		call	mp1_malloc
-		popl	%edx
-		popl	%ecx
-		#now %eax holds the pointer to the allocated memory in kernel
-		pushl	%edx
-		pushl	%ecx
-		pushl	%eax
-		call	mp1_copy_from_user
-		#check if the return value is 0
+		
+		movl	$0, nuflag					#reset the notify user flag
+		
+	n_missile:
+		movl	m_cur, %edx					#get the addr of current missile
+		movl	EXPLODED(%edx), %eax		#check if the missile is exploding
 		cmpl	$0, %eax
-		jne		addmissile_fail
-		popl	%eax
-		popl	%ecx
+		ja		m_explode					#if exploding go to m_explode
+	
+		movl	m_cur, %edx					#get current missile screen location
+		movl	X(%edx), %eax
+		sarl	$16, %eax
+		movl	Y(%edx), %ecx
+		sarl	$16, %ecx
+		addl	$-80, %eax					#check if out of screen
+		jns		erase_m						#if out erase missile
+		addl	$80, %eax
+		js		erase_m
+		addl	$-25, %ecx
+		jns		erase_m
+		addl	$25, %ecx
+		js		erase_m
+		
+		
+		cmpl	%eax, DEST_X(%edx)			#check if reached destination
+		jnz		not_yet_dest
+		cmpl	%ecx, DEST_Y(%edx)
+		jnz		not_yet_dest
+		jmp		m_explode					#destination reached, explode missile
+		
+	not_yet_dest:		
+		movl	m_cur, %edx					#get old missile screen location
+		movl	X(%edx), %eax
+		shrl	$16, %eax
+		movl	Y(%edx), %ecx
+		shrl	$16, %ecx
+		
+		
+		pushl	%eax						#erase old missile
+		pushl	%ecx
+		pushl	%edx
+		pushl	%eax 
+		pushl	%ecx
+		pushl	$0x20
+		call	draw_char	
+		popl	%edx						#clean up stack	
+		popl	%edx						#clean up stack
+		popl	%edx						#clean up stack
 		popl	%edx
-		#now %eax still holds the pointer to the allocated memory in kernel
-		#then we make %edx->next = head, head = %edx
-		movl	mp1_missile_list, %edx
-		movl	%edx, NEXT(%eax)
-		movl	%eax, mp1_missile_list
-		#return 0
-		movl	$0, %eax
-		jmp		addmissile_end
-addmissile_fail:
-		#first pop back
-		popl	%eax
 		popl	%ecx
-		popl	%edx
-		#free memory, %eax still holds the allocated memory
+		popl	%eax	
+	
+		movl	m_cur, %edx					#save new x_y exact location
+		movl	X(%edx), %eax
+		addl	VX(%edx), %eax 				
+		movl	%eax, X(%edx)
+		movl	Y(%edx), %ecx
+		addl	VY(%edx), %ecx 				
+		movl	%ecx, Y(%edx)
+
+		
+		shrl	$16, %eax					#get new missile screen location
+		shrl	$16, %ecx
+		#movl	m_cur, %edx
+		
+		pushl	%eax						
+		pushl	%ecx
+		pushl	%edx				
 		pushl	%eax
-		call	mp1_free
+		pushl	%ecx
+		movb	C(%edx),%cl
+		pushl	%ecx
+		call	draw_char					#draw new missile
+		popl	%edx						#clean up stack	
+		popl	%edx						#clean up stack
+		popl	%edx						#clean up stack
+		popl	%edx
+		popl	%ecx
 		popl	%eax
-		#return -1
-		movl	$-1, %eax
-addmissile_end:
-		#prepare to leave
+		
+		jmp		go_to_next_m	
+	
+	erase_m:	
+		movl	m_cur, %edx					#get current missile screen location
+		movl	X(%edx), %eax
+		sarl	$16, %eax
+		movl	Y(%edx), %ecx
+		sarl	$16, %ecx
+		
+		
+		pushl	%eax						
+		pushl	%ecx
+		pushl	%edx		
+		pushl	%eax 
+		pushl	%ecx
+		pushl	$0x20						
+		call	draw_char					#erase the missile
+		popl	%edx						#clean up stack	
+		popl	%edx						#clean up stack
+		popl	%edx						#clean up stack
+		popl	%edx
+		popl	%ecx
+		popl	%eax
+		
+		movl	m_prev, %eax				#check if prev missile pointer is null
+		cmpl	$0, %eax
+		ja		has_prev					#has prev, not null jump to has_prev
+		
+	no_prev:
+		movl	m_next,	%edx				#no prev, put m_next as new head pointer
+		movl	%edx, mp1_missile_list		
+		jmp		free_m						
+		
+	has_prev:
+		movl	m_next,	%edx				#has prev, set prev->next = next
+		movl	m_prev, %eax
+		movl	%edx, (%eax)
+		
+	free_m:		
+		movl	m_cur, %eax					#hold m_cur in %eax
+		movl	m_next, %edx				#move m_next to m_cur
+		movl	%edx, m_cur
+		cmpl	$0, %edx					#check if next missile pointer is null
+		jz		go_free						#is null, free current missile	
+		movl	(%edx),	%ecx     			#not null, move m_next->next to m_next
+		movl	%ecx, m_next				
+		
+	go_free:
+		pushl	%eax						
+		pushl	%ecx
+		pushl	%edx	
+		pushl	%eax						#push old m_cur on stack for mp1_free
+		call	mp1_free
+		popl	%edx						#clean up stack
+		popl	%edx
+		popl	%ecx
+		popl	%eax
+		
+		cmpl	$0, m_cur					#check if finished the list
+		jz		um_over						#yes, check over
+		jmp		n_missile					#no, go to next missile 
+	
+	m_explode:
+		movl	m_cur, %edx					#get current missile screen location 
+		movl	X(%edx), %eax
+		sarl	$16, %eax
+		movl	Y(%edx), %ecx
+		sarl	$16, %ecx
+		
+		pushl	%eax						
+		pushl	%ecx
+		pushl	%edx	
+		pushl	%eax 
+		pushl	%ecx
+		pushl	$64
+		call	draw_char					#draw explosion
+		popl	%edx						#clean up stack	
+		popl	%edx						#clean up stack
+		popl	%edx						#clean up stack
+		popl	%edx
+		popl	%ecx
+		popl	%eax
+		
+		
+		pushl	%eax						
+		pushl	%ecx
+		pushl	%edx	
+		pushl	m_cur
+		call	missile_explode
+		cmpl	$0, %eax					#check if hit a target
+		popl	%edx						#clean up stack
+		popl	%edx
+		popl	%ecx
+		popl	%eax
+		jz		no_hit						#no hit, do nothing
+		movl	$1, nuflag					#hit a target, set notiy user flag to 1
+		
+	no_hit:
+		movl	m_cur, %ecx					#decrement the exploding time
+		movl	EXPLODED(%ecx), %edx		
+		addl	$-1, %edx
+		movl	%edx, EXPLODED(%ecx)
+		cmpl	$0, %edx					#check if finished exploding
+		jz	erase_m							#yes, erase the missile
+		jmp	go_to_next_m					#no, keep the missile go to next missile
+			
+	
+	go_to_next_m:
+		movl	m_cur, %edx					#move m_cur to m_prev
+		movl	%edx, m_prev
+		movl	m_next, %edx				#move m_next to m_cur
+		movl	%edx, m_cur
+		cmpl	$0, %edx					#check if m_cur is null
+		jz		um_over						#is null, update_missiles over
+		movl	(%edx), %ecx				#not null, get next missile pointer
+		movl	%ecx, m_next
+		jmp		n_missile					#go to next missile
+		
+	um_over:
+		cmpl	$0, nuflag					#check if need to notify user
+		jz		get_out						#no, get out
+		
+		pushl	%eax						#yes, call notify user
+		pushl	%ecx
+		pushl	%edx
+		call	mp1_notify_user
+		popl	%edx
+		popl	%ecx
+		popl	%eax
+		
+	get_out:
+		popl	%edi
+		popl	%esi
+		leave
+		ret
+
+mp1_ioctl_startgame:
+		pushl	%ebp
+		movl	%esp,%ebp
+		pushl	%esi
+		pushl	%edi
+
+		
+		
+		movl	$0x00010101, base_alive		#initialize base_alive
+		movl	$0, mp1_score				#initialize mp1_score
+		movl	$40, crosshairs_x			#initialize crosshairs_x
+		movl	$12, crosshairs_y			#initialize crosshairs_y
+		
 		popl	%edi
 		popl	%esi
 		popl	%ebx
-		leave     
-		ret   
-		
-		
-		
-		
+		leave 
+		ret
 
-
-#this function is called by mp1_ioctl and will move the x hair
-# Inputs   : one argument, contains the move in x in low 16 bits and move in y in high 16 bits
-# Outputs  : return 0 and never fails
-# Registers: Standard C calling convention
-mp1_ioctl_movexhairs:
-		#c calling convetion
-		pushl	%ebp
-		movl	%esp, %ebp
+mp1_ioctl_addmissile:
+		pushl 	%ebp
+		movl 	%esp,%ebp
 		pushl	%ebx
 		pushl	%esi
 		pushl	%edi
-		#we can frist erase the original crosshair
-		#first calculate position (80*y+x)*2
-		movl	crosshairs_y, %eax
-		imull	$80, %eax
-		addl	crosshairs_x, %eax
-		addl	%eax, %eax
-		#use " " to replace, whose ascii is 32 in decimal
-		movb	$32, %cl
-		call	mp1_poke
-		#then get the argument in %ecx
-		movl	8(%ebp), %ecx
-		cmpl	$0, %ecx
-		je		movexhairs_end
-		#then we want to save x in %eax and y in %ecx
-		movl	%ecx, %eax
-		shll	$16, %eax
-		sarl	$16, %eax
-		sarl	$16, %ecx
-		#then add the change and check boundaries
-		addl	%eax, crosshairs_x
-		cmpl	$79, crosshairs_x
-		jg		movexhairs_xTooBig
-		cmpl	$0, crosshairs_x
-		jl		movexhairs_xTooSmall
-		jmp		movexhairs_checkY
-movexhairs_xTooBig:
-		movl	$79, crosshairs_x
-		jmp		movexhairs_checkY
-movexhairs_xTooSmall:
-		movl	$0, crosshairs_x
-movexhairs_checkY:
-		addl	%ecx, crosshairs_y
-		cmpl	$24, crosshairs_y
-		jg		movexhairs_yTooBig
-		cmpl	$0, crosshairs_y
-		jl		movexhairs_yTooSmall
-		jmp		movexhairs_redraw
-movexhairs_yTooBig:
-		movl	$24, crosshairs_y
-		jmp		movexhairs_redraw
-movexhairs_yTooSmall:
-		movl	$0, crosshairs_y
-movexhairs_redraw:
-		movl	crosshairs_y, %eax
-		imull	$80, %eax
-		addl	crosshairs_x, %eax
-		addl	%eax, %eax
-		#use "+" as crosshairs, whose ascii is 43 in decimal
-		movb	$43, %cl
-		call	mp1_poke
-movexhairs_end:
-		#prepare to leave
-		movl	$0, %eax
+
+		pushl	$33							#allocate memory
+		call	mp1_malloc
+		movl	8(%ebp),%ecx				#get user-side missle pointer
+		pushl	%ecx						#push from*
+		pushl 	%eax						#push to*
+		call	mp1_copy_from_user			#copy missile
+		cmpl	$0, %eax
+		jnz		copy_fail					#go to copy_fail is copy fail
+		popl	%eax
+		movl	mp1_missile_list, %edx
+		movl	%edx, (%eax)				#point new next to old head
+		movl	%eax, mp1_missile_list		#update new head
+
+		popl	%eax						#clean up stack
+		popl	%eax						#clean up stack
+		
+		movl	$0, %eax					#set return value
+		popl	%edi
+		popl	%esi
+		leave
+		ret
+	copy_fail:
+		call	mp1_free
+		popl	%eax						#clean up stack
+		popl	%eax						#clean up stack
+		popl	%eax						#clean up stack
+		
+		movl $-1, %eax
+		
 		popl	%edi
 		popl	%esi
 		popl	%ebx
-		leave          
+		leave
+		ret
+		
+
+mp1_ioctl_movexhairs:
+		pushl 	%ebp
+		movl 	%esp,%ebp
+		pushl	%ebx
+		pushl	%esi
+		pushl	%edi
+
+		
+		pushl	%eax						
+		pushl	%ecx
+		pushl	%edx
+		pushl	crosshairs_x					
+		pushl	crosshairs_y
+		pushl	$0x20
+		call	draw_char					#erase old c-h
+		popl	%edx						#clean up stack	
+		popl	%edx						#clean up stack
+		popl	%edx						#clean up stack
+		popl	%edx
+		popl	%ecx
+		popl	%eax
+		
+		movl	8(%ebp),%ecx				#copy new location info to %eax
+		movl	%ecx, %eax
+		shll	$16, %eax					#extracting the x-location
+		sarl	$16, %eax							
+		addl	crosshairs_x, %eax
+		sarl	$16, %ecx					#extracting the y-location
+		addl	crosshairs_y, %ecx
+		addl	$-80, %eax					#check if out of screen
+		jns		movexhairs_out
+		addl	$80, %eax
+		js		movexhairs_out
+		addl	$-25, %ecx
+		jns		movexhairs_out
+		addl	$25, %ecx
+		js		movexhairs_out
+		
+		pushl	%eax						
+		pushl	%ecx
+		pushl	%edx
+		pushl	%eax						
+		pushl	%ecx
+		pushl	$0x2B
+		call	draw_char					#draw new c-h
+		popl	%edx						#clean up stack	
+		popl	%edx						#clean up stack
+		popl	%edx						#clean up stack
+		popl	%edx
+		popl	%ecx
+		popl	%eax
+
+
+		
+		movl	%eax, crosshairs_x			#update crosshairs_x
+		movl	%ecx, crosshairs_y			#update crosshairs_y
+		
+	movexhairs_out:	
+		pushl	%eax						
+		pushl	%ecx
+		pushl	%edx
+		pushl	crosshairs_x
+		pushl	crosshairs_y
+		pushl	$0x2B
+		call	draw_char					#redraw old c-h
+		popl	%edx						#clean up stack	
+		popl	%edx						#clean up stack
+		popl	%edx						#clean up stack
+		popl	%edx
+		popl	%ecx
+		popl	%eax
+
+		movl	$0, %eax					#set return value
+		
+		popl	%edi
+		popl	%esi
+		popl	%ebx
+		leave
 		ret
 
-#this function is called by mp1_ioctl and get the status of the game
-# Inputs   : one argument, points to user space that we need to move data to
-# Outputs  : return 0 if copy succeeds and -1 if fails
-# Registers: Standard C calling convention
 mp1_ioctl_getstatus:
 		pushl 	%ebp
 		movl 	%esp,%ebp
+		pushl	%ebx
 		pushl	%esi
 		pushl	%edi
-		pushl	%ebx
-		#first get the argument
-		movl	8(%ebp),%ecx
-		#initialize result value to 0
-		movl 	$0, ioctl_status			
-		#copy score into the lower 16 bits
-		movl	mp1_score, %edx				
-		movl	%edx, ioctl_status
-status_check_first:
-		#check if first base alive and set bit 16
-		movl	$0x000000ff, %eax			
+
+		movl 	$0, cur_status				#initialize result value to 0
+		movl	mp1_score, %edx				#copy score into the lower 16 bits
+		movl	%edx, cur_status
+		
+	check_1:								
+		movl	$0x000000FF, %eax			#check if first base alive and set bit 16
 		andl	base_alive, %eax
-		jz		status_check_second
-		addl	$0x00010000, ioctl_status
-status_check_second:
-		#check if second base alive and set bit 17
-		movl	$0x0000ff00, %eax			
+		jz	check_2
+		addl	$0x00010000, cur_status
+		
+	check_2:
+		movl	$0x0000FF00, %eax			#check if second base alive and set bit 17
 		andl	base_alive, %eax
-		jz		status_check_third
-		addl	$0x00020000, ioctl_status	
-status_check_third:
-		#check if third base alive and set bit 18
-		movl	$0x00ff0000, %eax			
+		jz	check_3
+		addl	$0x00020000, cur_status
+		
+	check_3:
+		movl	$0x00FF0000, %eax			#check if third base alive and set bit 18
 		andl	base_alive, %eax
-		jz		getstatus_end
-		addl	$0x00040000, ioctl_status
-getstatus_end:			
+		jz	over
+		addl	$0x00040000, cur_status
+
+	over:
+		movl	8(%ebp),%ecx				#copy result to user space
 		pushl	$4
-		pushl	$ioctl_status
+		pushl	$cur_status
 		pushl	%ecx
 		call	mp1_copy_to_user
-		cmpl	$0, %eax					
-		#clean up the stack
-		popl	%edx							
-		popl	%edx						
-		popl	%edx										
-		jz	status_out						
-		movl	$-1, %eax					
-status_out:	
-		popl	%ebx
+		cmpl	$0, %eax					#check if copy success
+		
+		popl	%edx						#clean up stack	
+		popl	%edx						#clean up stack
+		popl	%edx						#clean up stack
+		
+		jz	status_out						#yes, return value is 0
+		movl	$-1, %eax					#no, set return value to -1
+		
+	status_out:		
 		popl	%edi
 		popl	%esi
+		popl	%ebx
 		leave
 		ret
+		
 
-#this function is called by mp1_ioctl and clean the list and free all the memory
-# Inputs   : none
-# Outputs  : none
-# Registers: Standard C calling convention
 mp1_ioctl_endgame:
-		#c calling convetion
-		pushl	%ebp
-		movl	%esp, %ebp
+		pushl 	%ebp
+		movl 	%esp,%ebp
 		pushl	%ebx
 		pushl	%esi
 		pushl	%edi
-		#the function clean up the linked list
-endgame_clear_list:
-		cmpl	$0, mp1_missile_list
-		je		endgame_end
-		#%eax = head, head = head->next, free(%eax)
-		movl	mp1_missile_list, %eax
-		movl	NEXT(%eax), %edx
-		movl	%edx, mp1_missile_list
-		pushl	%eax
+		
+	not_over_yet:
+		movl	mp1_missile_list, %eax		#check if the last missile is deleted
+		cmpl	$0, %eax					#yes, done!
+		jz	its_over
+		movl	(%eax),	%ecx				#no, set next missile as head
+		movl	%ecx, mp1_missile_list
+		
+		pushl	%eax						
+		pushl	%ecx
+		pushl	%edx
+		push	%eax
 		call	mp1_free
+		popl	%edx						#clean up stack
+		popl	%edx
+		popl	%ecx
 		popl	%eax
-		jmp		endgame_clear_list
-endgame_end:
-		#prepare to leave
-		movl	$1, %eax
+		jmp	not_over_yet
+		
+	its_over:
 		popl	%edi
 		popl	%esi
 		popl	%ebx
 		leave
 		ret
 
-
-#########################################other_helper_function####################################################
-#calculate_position, mp1_missile_remove, draw_city, draw_destroyed_city
-#all the registers are callee saved
-#this function is calculate the position on the screen 
-# Inputs   : %ecx points to the missile
-# Outputs  : return the offset to print to the screen
+#################helper#######################
+# void draw_char(unsigned long toprint, unsigned long y, unsigned long x);
+# Print the char stored in the lower byte of toprint at location indicated 
+# by x and y.
+# Inputs   : unsigned long toprint, unsigned long y, unsigned long x
+# Outputs  : none
 # Registers: Standard C calling convention
-calculate_position:
-		#c calling convetion
-		pushl	%ebp
-		movl	%esp, %ebp
+draw_char:
+		pushl 	%ebp
+		movl 	%esp,%ebp
 		pushl	%ebx
 		pushl	%esi
 		pushl	%edi
-		#the missile is indicated by %ecx
-		#position will be (80*y+x)*2
+
+		pushl	%eax
+		pushl 	%ecx
 		pushl	%edx
-		movl	Y(%ecx), %edx
-		shrl	$16, %edx
-		movl	%edx, %eax
-		imull	$80, %eax
-		movl	X(%ecx), %edx
-		shrl 	$16, %edx
+		movl	8(%ebp),%ecx					#char to be printed
+		movl	12(%ebp),%eax					#y coord
+		movl	16(%ebp),%edx					#x coord
+		imull	$80, %eax, %eax 				#calculate the offset in vmem
 		addl	%edx, %eax
-		addl	%eax, %eax
+		shll	$1, %eax
+		call	mp1_poke
 		popl	%edx
-		#prepare to leave
+		popl 	%ecx
+		popl	%eax
+		
 		popl	%edi
 		popl	%esi
 		popl	%ebx
 		leave
 		ret
 
-#this function is used to remove the given missile 
-# Inputs   : %ecx points to the missile need to be removed
+# void draw_live_base(unsigned long startloc);
+# Draw a live base starting at location indicated by startloc
+# Inputs   : unsigned long startloc
 # Outputs  : none
 # Registers: Standard C calling convention
-mp1_missile_remove:
-		#remove the missile
-		#use %ecx to hold the missile need to be removed
-		#use %esi to trace the linked list
-		pushl	%ebp
-		movl	%esp, %ebp
+draw_live_base:
+		pushl 	%ebp
+		movl 	%esp,%ebp	
 		pushl	%ebx
 		pushl	%esi
 		pushl	%edi
-		cmpl	$0, mp1_missile_list
-		je		missile_remove_end
-		movl	mp1_missile_list, %esi
-		#check if it is the first one
-		cmpl	%esi, %ecx
-		je		missile_remove_firstone
-		#check if %esi -> next == %ecx
-search_front_missile:
-		cmpl	NEXT(%esi), %ecx
-		je		find_front_missile
-		cmpl	$0, NEXT(%esi)
-		je		missile_remove_end
-		movl	NEXT(%esi), %esi
-		jmp		search_front_missile
-find_front_missile:
-		#copy the "next" of %ecx to the "next" of %esi
-		movl	NEXT(%ecx),	%edx
-		movl	%edx, NEXT(%esi)
-		#save caller saved registers
-		pushl	%eax
-		pushl	%edx
-		#push the argument 
-		pushl	%ecx
-		call	mp1_free
-		popl	%ecx
-		popl	%edx
-		popl	%eax
-		#make %ecx points to the missile in front of the removed one
-		movl	%esi, %ecx
-		jmp		missile_remove_end
-missile_remove_firstone:
-		movl	NEXT(%ecx), %ebx
-		movl	%ebx, mp1_missile_list
-		#save caller saved registers
-		pushl	%eax
-		pushl	%edx
-		#push the argument 
-		pushl	%ecx
-		call	mp1_free
-		popl	%ecx
-		popl	%edx
-		popl	%eax
-		movl	mp1_missile_list, %ecx
-missile_remove_end:
-		#prepare to leave
+		movl	8(%ebp), %edx
+		movl	$24, %eax
+				
+		imull	$80, %eax, %eax					#calculate the offset in vmem
+		addl	%edx, %eax
+		sall	$1, %eax
+
+		
+		leal	base_pic, %edx					
+		movb	(%edx), %cl
+		movl    vmem_base_addr(,1), %edx
+		movb	%cl, (%edx,%eax,1)
+		
+		
+		leal	base_pic, %edx
+		movb	1(%edx), %cl
+		movl    vmem_base_addr(,1), %edx
+		movb	%cl, 2(%edx,%eax,1)
+		
+		
+		leal	base_pic, %edx
+		movb	2(%edx), %cl
+		movl    vmem_base_addr(,1), %edx
+		movb	%cl, 4(%edx,%eax,1)
+		
+		
+		leal	base_pic, %edx
+		movb	3(%edx), %cl
+		movl    vmem_base_addr(,1), %edx
+		movb	%cl, 6(%edx,%eax,1)
+		
+		
+		leal	base_pic, %edx
+		movb	4(%edx), %cl
+		movl    vmem_base_addr(,1), %edx
+		movb	%cl, 8(%edx,%eax,1)
+
 		popl	%edi
 		popl	%esi
 		popl	%ebx
 		leave
 		ret
-		
-		
-		
-#this function is draw the good city on the screen 
-# Inputs   : %ecx holds the leftmost corner of the city
+
+# void draw_dead_base(unsigned long startloc);
+# Draw a dead base starting at location indicated by startloc
+# Inputs   : unsigned long startloc
 # Outputs  : none
 # Registers: Standard C calling convention
-draw_city:
-		#the leftcorner of city is in %ecx
-		#use %esi to hold the base_pic address
-		pushl	%ebp
-		movl	%esp, %ebp
+draw_dead_base:
+		pushl 	%ebp
+		movl 	%esp,%ebp	
 		pushl	%ebx
 		pushl	%esi
 		pushl	%edi
-		leal	base_pic, %esi
-		#first calculate 80*24(80*y), which is fixed
+		movl	8(%ebp), %edx
 		movl	$24, %eax
-		imull	$80, %eax
-		addl	%ecx, %eax
-		addl	%eax, %eax
-		#draw the first char
-		movb	0(%esi), %cl
-		call	mp1_poke
-		#draw the rest char
-		#add one char to %eax each time, which is 2 bytes
-		addl	$2, %eax
-		movb	1(%esi), %cl
-		call	mp1_poke
-		addl	$2, %eax
-		movb	2(%esi), %cl
-		call	mp1_poke
-		addl	$2, %eax
-		movb	3(%esi), %cl
-		call	mp1_poke
-		addl	$2, %eax
-		movb	4(%esi), %cl
-		call	mp1_poke
-		#prepare to leave
-		popl	%edi
-		popl	%esi
-		popl	%ebx
-		leave
-		ret		
+		
+		imull	$80, %eax, %eax					#calculate the offset in vmem
+		addl	%edx, %eax
+		sall	$1, %eax
 
 		
-#this function is draw the dead city on the screen 
-# Inputs   : %ecx holds the leftmost corner of the city
-# Outputs  : none
-# Registers: Standard C calling convention		
-draw_destroyed_city:
-		#the leftcorner of city is in %ecx
-		#use %esi to hold the dead_base_pic address
-		pushl	%ebp
-		movl	%esp, %ebp
-		pushl	%ebx
-		pushl	%esi
-		pushl	%edi
-		leal	dead_base_pic, %esi
-		#first calculate 80*24(80*y), which is fixed
-		movl	$24, %eax
-		imull	$80, %eax
-		addl	%ecx, %eax
-		addl	%eax, %eax
-		#draw the first char
-		movb	0(%esi), %cl
-		call	mp1_poke
-		#draw the rest char
-		#add one char to %eax each time, which is 2 bytes
-		addl	$2, %eax
-		movb	1(%esi), %cl
-		call	mp1_poke
-		addl	$2, %eax
-		movb	2(%esi), %cl
-		call	mp1_poke
-		addl	$2, %eax
-		movb	3(%esi), %cl
-		call	mp1_poke
-		addl	$2, %eax
-		movb	4(%esi), %cl
-		call	mp1_poke
-		#prepare to leave
+		leal	dead_base_pic, %edx
+		movb	1(%edx), %cl
+		movl    vmem_base_addr(,1), %edx
+		movb	%cl, (%edx,%eax,1)
+		
+		
+		leal	dead_base_pic, %edx
+		movb	(%edx), %cl
+		movl    vmem_base_addr(,1), %edx
+		movb	%cl, 2(%edx,%eax,1)
+		
+		
+		leal	dead_base_pic, %edx
+		movb	2(%edx), %cl
+		movl    vmem_base_addr(,1), %edx
+		movb	%cl, 4(%edx,%eax,1)
+		
+		
+		leal	dead_base_pic, %edx
+		movb	3(%edx), %cl
+		movl    vmem_base_addr(,1), %edx
+		movb	%cl, 6(%edx,%eax,1)
+		
+		
+		leal	dead_base_pic, %edx
+		movb	4(%edx), %cl
+		movl    vmem_base_addr(,1), %edx
+		movb	%cl, 8(%edx,%eax,1)
+
 		popl	%edi
 		popl	%esi
 		popl	%ebx
 		leave
-		ret	
+		ret
+	
+		
