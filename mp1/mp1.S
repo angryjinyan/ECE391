@@ -474,45 +474,46 @@ mp1_ioctl_getstatus:
 		movl 	%esp,%ebp
 		pushl	%esi
 		pushl	%edi
-
-		movl 	$0, ioctl_status				#initialize result value to 0
-		movl	mp1_score, %edx				#copy score into the lower 16 bits
+		pushl	%ebx
+		#first get the argument
+		movl	8(%ebp),%ecx
+		#initialize result value to 0
+		movl 	$0, ioctl_status			
+		#copy score into the lower 16 bits
+		movl	mp1_score, %edx				
 		movl	%edx, ioctl_status
-		
-	check_1:								
-		movl	$0x000000FF, %eax			#check if first base alive and set bit 16
+status_check_first:
+		#check if first base alive and set bit 16
+		movl	$0x000000ff, %eax			
 		andl	base_alive, %eax
-		jz	check_2
+		jz		status_check_second
 		addl	$0x00010000, ioctl_status
-		
-	check_2:
-		movl	$0x0000FF00, %eax			#check if second base alive and set bit 17
+status_check_second:
+		#check if second base alive and set bit 17
+		movl	$0x0000ff00, %eax			
 		andl	base_alive, %eax
-		jz	check_3
-		addl	$0x00020000, ioctl_status
-		
-	check_3:
-		movl	$0x00FF0000, %eax			#check if third base alive and set bit 18
+		jz		status_check_third
+		addl	$0x00020000, ioctl_status	
+status_check_third:
+		#check if third base alive and set bit 18
+		movl	$0x00ff0000, %eax			
 		andl	base_alive, %eax
-		jz	over
+		jz		getstatus_end
 		addl	$0x00040000, ioctl_status
-
-	over:
-		movl	8(%ebp),%ecx				#copy result to user space
+getstatus_end:			
 		pushl	$4
 		pushl	$ioctl_status
 		pushl	%ecx
 		call	mp1_copy_to_user
-		cmpl	$0, %eax					#check if copy success
-		
-		popl	%edx						#clean up stack	
-		popl	%edx						#clean up stack
-		popl	%edx						#clean up stack
-		
-		jz	status_out						#yes, return value is 0
-		movl	$-1, %eax					#no, set return value to -1
-		
-	status_out:		
+		cmpl	$0, %eax					
+		#clean up the stack
+		popl	%edx							
+		popl	%edx						
+		popl	%edx										
+		jz	status_out						
+		movl	$-1, %eax					
+status_out:	
+		popl	%ebx
 		popl	%edi
 		popl	%esi
 		leave
