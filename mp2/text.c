@@ -47,6 +47,12 @@ extern unsigned char text_image[5760];	/*5760 is the result of IMAGE_X_WIDTH*STA
  * Each character is 8x16 pixels and occupies two lines in the table below.
  * Each byte represents a single bitmapped line of a single character.
  */
+ 
+ #define image_size  18*320	/*the image has 320 columns and 18 lines*/
+ #define image_scroll_size   18*320/4    /*the image has four equal size planes*/
+ #define  column_number		320			/*the number of columns of the whole screen*/
+ #define	background_color	0x05	/*hat green*/
+ #define	character_color		0x30	/*red*/
 unsigned char font_data[256][16] = {
     {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
@@ -563,15 +569,17 @@ unsigned char font_data[256][16] = {
 };
 /*
  *convert_text_graph
- *DESCRIPTION: Take a string and produce a image of the string				
+ *DESCRIPTION: Take a string and produce a image of the string	
+ *				the buffer has the plane order of 0,1,2,3, which is
+ *				differnet from the upper screen buffer 
  *INPUT: input_str is the string we need to put on the screen
  *			mode 0: reset background, put status message in center
  *			mode 1:	do not barckground and put room name on left
  *			mode 2: do not reset background, put typing stuff on right
  *			mode 3: only reset background
- *OUTPUT:
- *RETURN VALUE:
- *SIDE EFFECTS:
+ *OUTPUT:	put the image to text_image, which is defined (in modex.h) globally
+ *RETURN VALUE: none
+ *SIDE EFFECTS:	none
  */
 
 void convert_text_graph(const char* input_str, int mode)
@@ -580,8 +588,6 @@ void convert_text_graph(const char* input_str, int mode)
 	int start_point;
 	/*index to loop around each line/column*/
 	int line_index, column_index;
-	/*image has 320 columns and 18 lines*/
-	int image_size = 320*18;
 	/*declare a bitmask*/
 	int bitmask;
 	/*declare a new string the same as input, the argument is const and cannot be modified*/
@@ -590,7 +596,7 @@ void convert_text_graph(const char* input_str, int mode)
 	
 	/*intial the image to black*/
 	if(mode == 0 || mode == 3)
-		memset(text_image, 0x05, image_size);
+		memset(text_image, background_color, image_size);
 	if(mode == 3)
 		return;
 	if(mode == 2 && input_str_copy[strlen(input_str)-1] != '_')
@@ -598,13 +604,13 @@ void convert_text_graph(const char* input_str, int mode)
 	switch(mode)
 	{
 		case 0:
-			start_point = (320 - 8 * strlen(input_str_copy))/2;
+			start_point = (column_number - FONT_WIDTH * strlen(input_str_copy))/2;
 			break;
 		case 1:
 			start_point = 0;
 			break;
 		case 2:
-			start_point = 320 - 8 * strlen(input_str_copy);
+			start_point = column_number - FONT_WIDTH * strlen(input_str_copy);
 			break;
 	}
 	
@@ -620,27 +626,28 @@ void convert_text_graph(const char* input_str, int mode)
 	for(char_index = 0; char_index < strlen(input_str_copy); char_index++)
 	{
 		text_char = (int) input_str_copy[char_index];
-		column_start_for_char = start_point + 8 * char_index;
+		column_start_for_char = start_point + FONT_WIDTH * char_index;
 		for(line_index = 1; line_index < 17; line_index++)
 		{
+			/*bit mask start at 0x80 and will shift right once every iteration*/
 			bitmask = 0x80;
-			for(column_index = 0; column_index < 8; column_index++, bitmask >>= 1)
+			for(column_index = 0; column_index < FONT_WIDTH; column_index++, bitmask >>= 1)
 			{
 				/*check if that pixel is written*/
 				if(font_data[text_char][line_index] & bitmask)
 				{
 					/* Calculate plane offset of first pixel. And fill the corrosponding pixel*/
 					p_off = column_index & 3;
-					text_image[p_off*image_size/4 + line_index*320/4 + (column_start_for_char + column_index)/4] = 0x30;	
+					text_image[p_off*image_scroll_size + line_index*column_number/4 + (column_start_for_char + column_index)/4] = character_color;	
 				}	
 			}
 		}
 	}
 	/*erase some strange spot in right down corner*/
-	for(column_index = 312; column_index < 320; column_index++)
+	for(column_index = column_number - FONT_WIDTH; column_index < column_number; column_index++)
 	{
 		p_off = column_index & 3;
-		text_image[p_off*image_size/4 + 16*320/4 + column_index/4] = 0x05;
+		text_image[p_off*image_scroll_size + 16*column_number/4 + column_index/4] = background_color;
 	}
 	
 	return;	

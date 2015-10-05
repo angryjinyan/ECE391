@@ -41,7 +41,7 @@
 #define FONT_HEIGHT 16
 /* Standard VGA text font. */
 extern unsigned char font_data[256][16];
-//extern unsigned char text_image[1440];
+
 /*
  *convert_text_graph
  *DSCRIPTION:Take a string and produce a image of the string

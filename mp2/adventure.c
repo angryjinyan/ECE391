@@ -252,14 +252,15 @@ game_loop ()
 		
 	}
 
-	
+	/*begin of the critical section*/
 	(void)pthread_mutex_lock (&msg_lock);
+	/*check if the input has changed*/
 	if(strcmp(last_type, get_typed_command()))
 	{
 		show_status_bar (" ", 3);
 		strcpy(last_type, get_typed_command());
 	}
-		
+	/*check if we need to print the status message*/	
 	if(status_msg[0] != '\0')
 	{
 		show_status_bar (status_msg, 0);	
@@ -267,6 +268,7 @@ game_loop ()
 	}
 	else
 	{
+		/*check if the status message has just disappeared, i.e. need to reset the background*/
 		if(status_just_gone)
 		{
 			show_status_bar (" ", 3);
@@ -274,6 +276,7 @@ game_loop ()
 		}
 		/*show the room name*/
 		show_status_bar (room_name (game_info.where), 1);
+		/*get the latest command*/
 		const char * cmd = get_typed_command ();
 		while (' ' == *cmd) { cmd++; }
 		if ('\0' != *cmd)
@@ -282,7 +285,7 @@ game_loop ()
 			show_status_bar ("_", 2);
 	}
 	(void)pthread_mutex_unlock (&msg_lock);
-	
+	/*end of the critical section*/
 	show_screen ();
 
 	/*
