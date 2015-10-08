@@ -953,6 +953,24 @@ fill_palette_text ()
     REP_OUTSB (0x03C9, palette_RGB, 32 * 3);
 }
 
+/*
+ * fill_my_palette
+ *   DESCRIPTION: Fill VGA palette with default VGA colors.
+ *                Only the last 192 (of 256) colors are written.
+ *   INPUTS: a palette of 192 for a room
+ *   OUTPUTS: none
+ *   RETURN VALUE: none
+ *   SIDE EFFECTS: changes the last 192 palette colors
+ */  
+void
+fill_my_palette(unsigned char my_palette[192][3])
+{
+	/* Start writing at color 64. */
+    OUTB (0x03C8, 0x40);
+	
+	/* Write all 192 colors from array. */
+    REP_OUTSB (0x03C9, my_palette, 192 * 3);
+}
 
 /*
  * write_font_data

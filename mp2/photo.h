@@ -51,7 +51,10 @@
 #define MAX_PHOTO_HEIGHT  1024
 #define MAX_OBJECT_WIDTH  160
 #define MAX_OBJECT_HEIGHT 100
-
+#define OCTREE_LEVEL4_NODES_NUM		4096
+#define OCTREE_LEVEL4_NODES_USED_NUM		128
+#define OCTREE_LEVEL2_NODES_NUM		64
+#define PALETTE_USED		64
 
 /* Fill a buffer with the pixels for a horizontal line of current room. */
 extern void fill_horiz_buffer (int x, int y, unsigned char buf[SCROLL_X_DIM]);
@@ -82,6 +85,15 @@ extern image_t* read_obj_image (const char* fname);
 
 /* Read room photo from a file into a dynamically allocated structure. */
 extern photo_t* read_photo (const char* fname);
+
+/*fill in the last 192 positions of VGA palette*/
+void fill_my_palette(unsigned char my_palette[192][3]);
+
+/*convert the 16 bit RGB value to map to level 2 or level 4 nodes*/
+extern uint16_t	map_to_octree (const uint16_t pixel, const uint8_t level_number);
+
+/*the compare function for qsort of level_4*/
+extern int level_4_qsort_compare(const void *a, const void *b);
 
 /* 
  * N.B.  I'm aware that Valgrind and similar tools will report the fact that
