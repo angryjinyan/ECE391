@@ -57,6 +57,10 @@
 #include "assert.h"
 #include "input.h"
 
+ /*add two more headers*/
+ #include "./module/mtcp.h"
+ #include "./module/tuxctl-ioctl.h"
+
 /* set to 1 and compile this file by itself to test functionality */
 #define TEST_INPUT_DRIVER 0
 
@@ -66,6 +70,20 @@
 
 /* stores original terminal settings */
 static struct termios tio_orig;
+static int fd;
+static cmd_t prev_cmd = CMD_NONE;
+
+
+
+void open_and_init()
+{
+	fd = open("/dev/ttyS0", O_RDWR | O_NOCTTY);
+	int ldsic_num = N_MOUSE;
+	ioctl(fd, TIOCSETD, &ldsic_num);
+	ioctl(fd, TUX_INIT);
+}
+
+
 
 
 /* 
@@ -116,6 +134,12 @@ init_input ()
 	return -1;
     }
 
+    //open the serial port and set the Tux controller line discipline
+    fd = open("/dev/ttyS0", O_RDWR | O_NOCTTY);
+	int ldsic_num = N_MOUSE;
+	ioctl(fd, TIOCSETD, &ldsic_num);
+
+
     /* Return success. */
     return 0;
 }
@@ -154,6 +178,68 @@ typed_a_char (char c)
 	typing[len] = c;
 	typing[len + 1] = '\0';
     }
+}
+/* 
+ * get_tux_command
+ *   DESCRIPTION: Reads a command from the input controller.  As some
+ *                controllers provide only absolute input (e.g., go
+ *                right), the current direction is needed as an input
+ *                to this routine.
+ *   INPUTS: None
+ *   OUTPUTS: none
+ *   RETURN VALUE: command issued by the input controller
+ *   SIDE EFFECTS: drains any tux controller input
+ */
+
+cmd_t get_tux_command()
+{
+	unsigned long arg;
+	arg = 0;
+	ioctl(fd, TUX_BUTTONS, &arg);
+	cmd_t pushed = CMD_NONE;	
+	
+	switch(arg & 0x00FF)
+	{
+		//right
+		case 0x7F:
+			prev_cmd = CMD_RIGHT;
+			return CMD_RIGHT;
+		//left
+		case 0xBF:
+			prev_cmd = CMD_LEFT;
+			return CMD_LEFT;
+		//down
+		case 0xDF:
+			prev_cmd = CMD_DOWN;
+			return CMD_DOWN;
+		//up
+		case 0xEF:
+			prev_cmd = CMD_UP;
+			return CMD_UP;
+		default:	break;
+	}
+	switch(arg & 0x00FF)
+	{
+		//c button
+		case 0xF7:
+			pushed = CMD_MOVE_RIGHT; break;
+		//b button
+		case 0xFB:
+			pushed = CMD_ENTER;	break;
+		//a button
+		case 0xFD:
+			pushed = CMD_MOVE_LEFT;	break;
+		//start button
+		case 0xFE:
+			pushed = CMD_NONE;	break;
+		default:	break;	
+	}
+	if(pushed != CMD_NONE && pushed == prev_cmd)
+		return CMD_NONE;
+		
+	prev_cmd = pushed;
+
+	return pushed;
 }
 
 /* 
@@ -307,10 +393,31 @@ shutdown_input ()
  */
 void
 display_time_on_tux (int num_seconds)
-{
+{/*
 #if (USE_TUX_CONTROLLER != 0)
 #error "Tux controller code is not operational yet."
-#endif
+#endif*/
+	unsigned long display_value; 
+	unsigned long dig1, dig2, dig3, dig4; 
+	unsigned long seconds, minutes; 
+	seconds = num_seconds % 60;
+	minutes = num_seconds / 60;
+	//check if we need to write the first digit
+	if(minutes < 10)
+		display_value = 0x04070000;
+	else
+		display_value = 0x040F0000;
+	
+	dig1 = minutes / 10; 
+	dig2 = minutes % 10;
+	dig3 = seconds / 10;
+	dig4 = seconds % 10;
+	
+	
+	
+	display_value |= (dig1 << 12) | (dig2 << 8) | (dig3 << 4) | dig4;
+
+	ioctl(fd, TUX_SET_LED, display_value); 
 }
 
 
@@ -332,14 +439,29 @@ main ()
     }
 
     init_input ();
+
+	//intialize the tux
+	ioctl(fd, TUX_INIT);
+
+
+	//test set_led
+    //ioctl (fd, TUX_SET_LED, 0x050F226A);
+
+    //display_time_on_tux (83);
+    //get_tux_command();
+    //printf ("command issued: %s\n", cmd_name[cmd]);
+    
     while (1) {
-        while ((cmd = get_command ()) == last_cmd);
+        while ((cmd = get_tux_command()) == last_cmd);
+       // printf("reach 421!\n");
 	last_cmd = cmd;
-	printf ("command issued: %s\n", cmd_name[cmd]);
-	if (cmd == CMD_QUIT)
-	    break;
-	display_time_on_tux (83);
+    // cmd = get_tux_command();	
+	 printf ("command issued: %s\n", cmd_name[cmd]);
+	 if (cmd == CMD_QUIT)
+	     break;
+	 display_time_on_tux (83);
     }
+    
     shutdown_input ();
     return 0;
 }

@@ -64,6 +64,11 @@ extern void reset_typed_command ();
 /* Shut down the input device. */
 extern void shutdown_input ();
 
+/**/
+extern cmd_t get_tux_command();
+
+extern void open_and_init();
+
 /*
  * Show the elapsed seconds on the Tux controller (no effect when
  * compiled for a keyboard).

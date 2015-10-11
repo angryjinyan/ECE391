@@ -70,6 +70,10 @@ static int sanity_check (void);
 /* outcome of the game */
 typedef enum {GAME_WON, GAME_QUIT} game_condition_t;
 
+int32_t enter_room;      /* player has changed rooms        */
+
+game_condition_t game;  /* outcome of playing */
+
 /* structure used to hold game information */
 typedef struct {
     room_t*      where;		 /* current room for player               */
@@ -134,6 +138,7 @@ static const typed_cmd_t cmd_list[] = {
 /* local functions--see function headers for details */
 
 static void cancel_status_thread (void* ignore);
+static void cancel_tux_thread(void* ignore);
 static game_condition_t game_loop (void);
 static int32_t handle_typing (void);
 static void init_game (void);
@@ -144,14 +149,14 @@ static void move_photo_up (void);
 static void redraw_room (void);
 static void* status_thread (void* ignore);
 static int time_is_after (struct timeval* t1, struct timeval* t2);
-
+static void* tux_thread (void* ignore);
 
 /* file-scope variables */
 
 static game_info_t game_info; /* game information */
 static char last_type [30];
 static int status_just_gone = 0;
-
+static int prev_time = -1;
 /* 
  * The variables below are used to keep track of the status message helper
  * thread, with Posix thread id recorded in status_thread_id.  
@@ -167,6 +172,7 @@ static int status_just_gone = 0;
  * condition variable msg_cv (while holding the msg_lock).
  */
 static pthread_t status_thread_id;
+static pthread_t tux_thread_id;
 static pthread_mutex_t msg_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t  msg_cv = PTHREAD_COND_INITIALIZER;
 static char status_msg[STATUS_MSG_LEN + 1] = {'\0'};
@@ -187,6 +193,20 @@ cancel_status_thread (void* ignore)
     (void)pthread_cancel (status_thread_id);
 }
 
+/* 
+ * cancel_tux_thread
+ *   DESCRIPTION: Terminates the tux helper thread.  Used as
+ *                a cleanup method to ensure proper shutdown.
+ *   INPUTS: none (ignored)
+ *   OUTPUTS: none
+ *   RETURN VALUE: none
+ *   SIDE EFFECTS: none
+ */
+static void
+cancel_tux_thread (void* ignore)
+{
+    (void)pthread_cancel (tux_thread_id);
+}
 
 /* 
  * game_loop
@@ -207,7 +227,9 @@ game_loop ()
 
     struct timeval cur_time; /* current time (during tick)      */
     cmd_t cmd;               /* command issued by input control */
-    int32_t enter_room;      /* player has changed rooms        */
+    
+
+    int time_cur;
 
     /* Record the starting time--assume success. */
     (void)gettimeofday (&start_time, NULL);
@@ -221,6 +243,8 @@ game_loop ()
 
     /* The player has just entered the first room. */
     enter_room = 1;
+
+
 
     /* The main event loop. */
     while (1) {
@@ -321,6 +345,12 @@ game_loop ()
 	 * off to the nearest tick by definition.
 	 */
 	/* (none right now...) */
+	time_cur = tick_time.tv_sec - start_time.tv_sec;
+	if(time_cur != prev_time)
+	{
+		display_time_on_tux(time_cur);
+ 	    prev_time = time_cur;
+	}
 
 	/* 
 	 * Handle synchronous events--in this case, only player commands. 
@@ -721,6 +751,49 @@ status_thread (void* ignore)
 
 
 /* 
+ *tux_thread
+ *   DESCRIPTION: Function executed by tux helper thread.
+ *             
+ *   INPUTS: none (ignored)
+ *   OUTPUTS: none
+ *   RETURN VALUE: NULL
+ *   SIDE EFFECTS: Changes the status message to an empty string.
+ */
+static void*
+tux_thread (void* ignore)
+{
+    cmd_t cmd;
+    cmd = get_tux_command ();
+	switch (cmd) 
+	{
+	    case CMD_UP:    move_photo_down ();  break;
+	    case CMD_RIGHT: move_photo_left ();  break;
+	    case CMD_DOWN:  move_photo_up ();    break;
+	    case CMD_LEFT:  move_photo_right (); break;
+	    case CMD_MOVE_LEFT:   
+		enter_room = (TC_CHANGE_ROOM == 
+			      try_to_move_left (&game_info.where));
+		break;
+	    case CMD_ENTER:
+		enter_room = (TC_CHANGE_ROOM ==
+			      try_to_enter (&game_info.where));
+		break;
+	    case CMD_MOVE_RIGHT:
+		enter_room = (TC_CHANGE_ROOM == 
+			      try_to_move_right (&game_info.where));
+		break;
+	    default: break;
+	}
+
+	/* If player wins the game, their room becomes NULL. */
+	if (NULL == game_info.where) {
+	    game = GAME_WON;
+	}
+	return NULL;
+}
+
+
+/* 
  * time_is_after 
  *   DESCRIPTION: Check whether one time is at or after a second time.
  *   INPUTS: t1 -- the first time
@@ -797,6 +870,15 @@ main ()
 	PANIC ("failed sanity checks");
     }
 
+    open_and_init();
+
+    if (0 != pthread_create (&tux_thread_id, NULL, tux_thread, NULL)) {
+        PANIC ("failed to create tux thread");
+    }
+    push_cleanup (cancel_tux_thread, NULL); {
+
+
+
     /* Create status message thread. */
     if (0 != pthread_create (&status_thread_id, NULL, status_thread, NULL)) {
         PANIC ("failed to create status thread");
@@ -822,6 +904,8 @@ main ()
 	} pop_cleanup (1);
 
     } pop_cleanup (1);
+
+	} pop_cleanup (1);
 
     /* Print a message about the outcome. */
     switch (game) {
