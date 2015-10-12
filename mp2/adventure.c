@@ -398,8 +398,13 @@ game_loop ()
 	if (NULL == game_info.where) {
 	    return GAME_WON;
 	}
+
+	/*If the palyer quits the game.*/
 	if(game == GAME_QUIT)
+	{
 		return GAME_QUIT;
+	}
+
     } /* end of the main event loop */
 }
 
@@ -768,7 +773,7 @@ status_thread (void* ignore)
  *   INPUTS: none (ignored)
  *   OUTPUTS: none
  *   RETURN VALUE: NULL
- *   SIDE EFFECTS: Changes the status message to an empty string.
+ *   SIDE EFFECTS: get the command from the tux and do the corrosponding operations.
  */
 static void*
 tux_thread (void* ignore)
@@ -794,7 +799,6 @@ tux_thread (void* ignore)
 		(void)pthread_mutex_lock (&cmd_lock);
     
     cmd = get_tux_command ();
-    //(void)pthread_mutex_unlock (&cmd_lock);
 	switch (cmd) 
 	{
 	    case CMD_UP:    move_photo_down ();  break;
@@ -830,7 +834,8 @@ tux_thread (void* ignore)
 	 * event loop, and is the minimum amount of time between events.
 	 */
 	do {
-	    if (gettimeofday (&cur_time, NULL) != 0) {
+	    if (gettimeofday (&cur_time, NULL) != 0) 
+		{
 		/* Panic!  (should never happen) */
 		clear_mode_X ();
 		shutdown_input ();
@@ -846,7 +851,8 @@ tux_thread (void* ignore)
 	 * that we haven't missed.
 	 */
 	do {
-	    if ((tick_time.tv_usec += TICK_USEC) > 1000000) {
+	    if ((tick_time.tv_usec += TICK_USEC) > 1000000) 
+		{
 		tick_time.tv_sec++;
 		tick_time.tv_usec -= 1000000;
 	    }
@@ -937,6 +943,7 @@ main ()
 
     open_and_init();
 
+	/* Create tux thread. */
     if (0 != pthread_create (&tux_thread_id, NULL, tux_thread, NULL)) {
         PANIC ("failed to create tux thread");
     }
