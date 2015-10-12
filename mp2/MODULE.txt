@@ -1,1 +1,0 @@
-This directory is supposed to have a 'module' subdirectory. If it is missing, contact a TA immediately to fix it.
