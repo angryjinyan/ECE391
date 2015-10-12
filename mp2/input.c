@@ -448,26 +448,14 @@ main ()
 	ioctl(fd, TUX_INIT);
 
 
-	//test set_led
-    //ioctl (fd, TUX_SET_LED, 0x050F226A);
-
-    //display_time_on_tux (83);
-    //get_tux_command();
-    //printf ("command issued: %s\n", cmd_name[cmd]);
-    /*int i;
-    i = 1;
-    while(i < 100000)
-    	display_time_on_tux(++i);*/
-    while (1) {
+    while (1) 
+	{
         while ((cmd = get_tux_command()) == last_cmd);
-       // printf("reach 421!\n");
-	last_cmd = cmd;
-    // cmd = get_tux_command();	
-	 printf ("command issued: %s\n", cmd_name[cmd]);
-	 if (cmd == CMD_QUIT)
-	     break;
-	 display_time_on_tux (83);
-
+		last_cmd = cmd;
+		 printf ("command issued: %s\n", cmd_name[cmd]);
+	 	if (cmd == CMD_QUIT)
+	    	break;
+	 	display_time_on_tux (83);
     }
     
     shutdown_input ();

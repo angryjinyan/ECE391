@@ -256,6 +256,7 @@ int tuxctl_ioctl_tux_buttons(struct tty_struct* tty, unsigned long arg)
 	//check lock
 	spin_lock_irqsave(&(button_status.buttons_lock), flags);
 
+	//copy to user space
 	ret = copy_to_user((void *)arg, (void *)buttons_ptr, sizeof(long));
 
 	//unlock

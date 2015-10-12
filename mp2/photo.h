@@ -86,7 +86,7 @@ extern image_t* read_obj_image (const char* fname);
 /* Read room photo from a file into a dynamically allocated structure. */
 extern photo_t* read_photo (const char* fname);
 
-/*fill in the last 192 positions of VGA palette*/
+/*fill in the last 192 positions of VGA palette, defined in modex.c*/
 void fill_my_palette(unsigned char my_palette[192][3]);
 
 /*convert the 16 bit RGB value to map to level 2 or level 4 nodes*/
