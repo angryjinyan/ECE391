@@ -62,10 +62,10 @@
  #include "./module/tuxctl-ioctl.h"
 
 /* set to 1 and compile this file by itself to test functionality */
-#define TEST_INPUT_DRIVER 1
+#define TEST_INPUT_DRIVER 0
 
 /* set to 1 to use tux controller; otherwise, uses keyboard input */
-#define USE_TUX_CONTROLLER 1
+#define USE_TUX_CONTROLLER 0
 
 
 /* stores original terminal settings */
